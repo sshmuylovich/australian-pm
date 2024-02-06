@@ -1,0 +1,214 @@
+---
+title: "Lifespans of the Prime Ministers of Australia"
+subtitle: "Mini-Essay 5a"
+author: 
+  - Sima Shmuylovich
+thanks: "Code and data are available at: https://github.com/sshmuylovich/australia-pm.git."
+date: 6 February 2024
+date-format: long
+abstract: In this paper we are interested in how long prime ministers of the Australia lived, based on the year they were born. We will scrape data from Wikipedia using rvest, clean it, and then make a graph.
+format: pdf
+toc: true
+number-sections: true
+---
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+#### Preamble ####
+# Purpose: https://tellingstorieswithdata.com/07-gather.html#tutorial. 
+# Author: Sima Shmuylovich
+# Date: 25 January 2024
+# Contact: sima.shmuylovich@mail.utoronto.ca
+# License: MIT
+# Pre-requisites: ...
+```
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+# Load necessary packages
+library(babynames)
+library(gh)
+library(here)
+library(httr)
+library(janitor)
+library(jsonlite)
+library(knitr)
+library(lubridate)
+library(pdftools)
+library(purrr)
+library(rvest)
+library(spotifyr)
+library(tesseract)
+library(tidyverse)
+library(usethis)
+library(xml2)
+```
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+# Download the wikipedia page using read_html() and save it locally.
+raw_data <-
+  read_html(
+    "https://en.wikipedia.org/wiki/List_of_prime_ministers_of_Australia"
+  )
+write_html(raw_data, "pms.html")
+```
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+# Select the desired html table element with the help of SelectorGadget. 
+raw_data <- read_html("pms.html")
+
+parse_data_selector_gadget <-
+  raw_data |>
+  html_element(".wikitable") |>
+  html_table()
+
+head(parse_data_selector_gadget)
+```
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+# Select desired dataset attribute and remove duplicates.
+parsed_data <-
+  parse_data_selector_gadget |> 
+  clean_names() |> 
+  rename(raw_text = name_birth_death_constituency) |> 
+  select(raw_text) |> 
+  filter(raw_text != "Name(Birth–Death)Constituency") |> 
+  distinct() 
+
+head(parsed_data)
+```
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+# Clean raw data to seperate name, birth and death dates, and birth dates only.
+initial_clean <-
+  parsed_data |>
+  separate(
+    raw_text, into = c("name", "not_name"), sep = "\\(", extra = "merge",
+  ) |> 
+  mutate(date = str_extract(not_name, "[[:digit:]]{4}–[[:digit:]]{4}"),
+         born = str_extract(not_name, "b\\.[[:space:]][[:digit:]]{4}")
+         ) |>
+  select(name, date, born)
+  
+head(initial_clean)
+```
+
+```{r}
+#| include: false
+#| warning: false
+#| message: false
+# Clean data further by seperating birth and death dates into birth date (combine with birth date only) and death date.
+cleaned_data <-
+  initial_clean |>
+  separate(date, into = c("birth", "died"), 
+           sep = "–") |>   # PMs who have died have their birth and death years 
+  # separated by a hyphen, but we need to be careful with the hyphen as it seems 
+  # to be a slightly odd type of hyphen and we need to copy/paste it.
+  mutate(
+    born = str_remove_all(born, "b\\.[[:space:]]"),
+    birth = if_else(!is.na(born), born, birth)
+  ) |> # Alive PMs have slightly different format
+  select(-born) |>
+  rename(born = birth) |> 
+  mutate(across(c(born, died), as.integer)) |> 
+  mutate(Age_at_Death = died - born) |> 
+  distinct() # Some of the PMs had two goes at it.
+
+head(cleaned_data)
+```
+
+# Results {#sec-results}
+### Australian Prime Ministers and their Respective Birth and Death Years. 
+```{r}
+#| label: tbl-australia-pm
+#| tbl-cap: Australian Prime Ministers and their Respective Birth and Death Years. 
+#| echo: false
+#| warning: false
+#| message: false
+
+# Format Table Nicely
+cleaned_data |>
+  kable(
+    col.names = c("Prime Minister", "Birth year", "Death year", "Age at death")
+    )
+```
+
+### The Lifespan of Australian Prime Ministers.
+
+```{r}
+#| label: fig-australia-pm
+#| fig-cap: The Lifespan of Australian Prime Ministers. 
+#| echo: false
+#| warning: false
+#| message: false
+cleaned_data |>
+  mutate(
+    still_alive = if_else(is.na(died), "Yes", "No"),
+    died = if_else(is.na(died), as.integer(2023), died)
+  ) |>
+  mutate(name = as_factor(name)) |>
+  ggplot(
+    aes(x = born, xend = died, y = name, yend = name, color = still_alive)
+    ) +
+  geom_segment() +
+  labs(
+    x = "Year of birth", y = "Prime minister", color = "PM is currently alive"
+    ) +
+  theme_minimal() +
+  scale_color_brewer(palette = "Set1") +
+  theme(legend.position = "bottom", axis.text.y = element_text(size = 6))
+```
+
+\newpage
+
+# Discussion {#sec-discussion}
+This study highlights several key findings on the lifespans of Australian Prime Ministers. Firstly, it outlines a clear timeline of birth and death years, providing a historical context for each leader's tenure. The analysis suggests a potential increase in lifespan over generations, possibly reflecting improvements in healthcare and living conditions. Moreover, the research touches upon outliers and their impact on the overall lifespan trends. This in-depth examination not only sheds light on the personal health histories of these political figures but also mirrors broader societal changes affecting longevity in Australia. This study offers valuable insights into the historical and health-related aspects of Australia's leaders.
+
+My experience with web scraping for this study involved collecting data from Wikipedia on the birth and death years of Australian Prime Ministers. This task required me to navigate challenges such as understanding the structure of Wikipedia's data, modifying scripts taught introduced in the textbook, and ensuring the accuracy and completeness of the gathered information. Through this process, I gained practical skills in data collection, programming, and data analysis, providing a hands-on learning experience in handling real-world data. The project also offered insights into the historical trends of political leadership in Australia, showcasing the practical applications of web scraping in research.
+
+The data source for this project is the Wikipedia page titled "List of Prime Ministers of Australia." The objective of this data extraction and processing project was to gather information about the Prime Ministers of Australia, specifically their names, birth and death dates, and from there calculate the age at which they passed away. The Wikipedia page used in this study contains a table that lists the Prime Ministers' names alongside their birth and death years, as well as other information prevalent to their time in office. 
+
+To extract and process the relevant data from the Wikipedia page, the project utilized the R programming language and several libraries such as `rvest`. The extraction process involved several key steps. Initially, the project used the `read_html()` function to fetch the HTML content of the Wikipedia page and saved it locally as "pms.html" for further processing. SelectorGadget, a web scraping tool, was used to identify the specific HTML table element that contained the desired data. In this case, the table with the class "wikitable" was selected for extraction. The extracted data contained a header row with column names and some unwanted information. 
+
+To clean the data, column names were standardized using the `clean_names()` function, the "raw_text" column was selected, and the header row was removed. Duplicate rows were also eliminated to ensure data consistency. The "date" column was split into "birth" and "died" columns, taking into account variations in the format. The "born" column was also processed to accommodate different representations, such as "b." preceding birth years. Age at death was calculated by subtracting birth years from death years. Finally, any remaining duplicate rows were removed to obtain a clean dataset.
+
+I initially wanted to conduct a Study on Canada's Prime Ministers but because of the inconsistent cell merging for the table containing the information I wished to scrape, I found it difficult to identify specific HTML table elements. I understood that I would have had to combine several scrapes from smaller HTML elements to get all the information. My next choice was to conduct a Study on New Zealand's Prime Ministers but on their Wikipedia page the information was split among more than one table. Again, I found it difficult to identify the specific HTML table elements I would have had to combine to get all the information. In the end, I chose Australia because the information I wished to scrape from Wikipedia was contained in a single table that was easy to identify using Selector Gadget. 
+
+I have past experience scraping websites in academic settings- as a Computer Science major- and in real-life- whether it be for a personal project or during a summer internship. This was my first time scraping a website in R however, and While the functions used were different, I enjoyed how similar the process was at its core or perhaps better said "in theory". Next time, I will challenge myself more and go for a more difficult web scrape so that I may learn more through the process of trying. 
+
+
+\newpage
+
+# References {#sec-references}
+https://tellingstorieswithdata.com/07-gather.html#exercises
+
+https://en.wikipedia.org/wiki/List_of_prime_ministers_of_Australia
+
+https://rvest.tidyverse.org/articles/selectorgadget.html
+
+https://rvest.tidyverse.org/
+
+https://www.tidyverse.org/
+
+https://www.r-project.org/
+
+
+
+
+
